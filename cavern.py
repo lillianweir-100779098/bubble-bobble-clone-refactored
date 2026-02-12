@@ -326,7 +326,7 @@ class Player(GravityActor):
         else:
             return False
 
-    def update(self):
+    def update(self, input_state):
         # Call GravityActor.update - parameter is whether we want to perform collision detection as we fall. If health
         # is zero, we want the player to just fall out of the level
         super().update(self.health > 0)
@@ -354,9 +354,9 @@ class Player(GravityActor):
             # We're not hurt
             # Get keyboard input. dx represents the direction the player is facing
             dx = 0
-            if keyboard.left:
+            if input_state.left:
                 dx = -1
-            elif keyboard.right:
+            elif input_state.right:
                 dx = 1
 
             if dx != 0:
@@ -368,7 +368,7 @@ class Player(GravityActor):
 
             # Do we need to create a new orb? Space must have been pressed and released, the minimum time between
             # orbs must have passed, and there is a limit of 5 orbs.
-            if space_pressed() and self.fire_timer <= 0 and len(game.orbs) < 5:
+            if input_state.fire_pressed and self.fire_timer <= 0 and len(game.orbs) < 5:
                 # x position will be 38 pixels in front of the player position, while ensuring it is within the
                 # bounds of the level
                 x = min(730, max(70, self.x + self.direction_x * 38))
@@ -378,14 +378,14 @@ class Player(GravityActor):
                 game.play_sound("blow", 4)
                 self.fire_timer = 20
 
-            if keyboard.up and self.vel_y == 0 and self.landed:
+            if input_state.jump_pressed and self.vel_y == 0 and self.landed:
                 # Jump
                 self.vel_y = -16
                 self.landed = False
                 game.play_sound("jump")
 
         # Holding down space causes the current orb (if there is one) to be blown further
-        if keyboard.space:
+        if input_state.fire_held:
             if self.blowing_orb:
                 # Increase blown distance up to a maximum of 120
                 self.blowing_orb.blown_frames += 4
@@ -569,13 +569,16 @@ class Game:
         # in the centre of the screen
         return WIDTH/2
 
-    def update(self):
+    def update(self, input_state):
         self.timer += 1
 
         # Update all objects
-        for obj in self.fruits + self.bolts + self.enemies + self.pops + [self.player] + self.orbs:
+        for obj in self.fruits + self.bolts + self.enemies + self.pops + self.orbs:
             if obj:
                 obj.update()
+
+        if self.player:
+            self.player.update(input_state)
 
         # Use list comprehensions to remove objects which are no longer wanted from the lists. For example, we recreate
         # self.fruits such that it contains all existing fruits except those whose time_to_live counter has reached zero
@@ -689,24 +692,6 @@ def draw_status():
         screen.blit(image, (x, 450))
         x += IMAGE_WIDTH[image]
 
-# Is the space bar currently being pressed down?
-space_down = False
-
-# Has the space bar just been pressed? i.e. gone from not being pressed, to being pressed
-def space_pressed():
-    global space_down
-    if keyboard.space:
-        if space_down:
-            # Space was down previous frame, and is still down
-            return False
-        else:
-            # Space wasn't down previous frame, but now is
-            space_down = True
-            return True
-    else:
-        space_down = False
-        return False
-
 # Set up sound system and start music
 try:
     pygame.mixer.quit()
@@ -718,7 +703,6 @@ except:
     # If an error occurs, just ignore it
     pass
 
-# Create a new Game object, without a Player object
 game = None
 
 class App:
@@ -751,9 +735,9 @@ class MenuScreen(Screen):
 
     def update(self, input_state):
         global game
-        game.update()
+        game.update(input_state)
 
-        if input_state['space_pressed']:
+        if input_state.fire_pressed:
             play_screen = PlayScreen(self.app)
             self.app.change_screen(play_screen)
 
@@ -761,7 +745,6 @@ class MenuScreen(Screen):
         global game
         game.draw()
         screen.blit("title", (0, 0))
-
         anim_frame = min(((game.timer + 40) % 160) // 4, 9)
         screen.blit("space" + str(anim_frame), (130, 280))
 
@@ -773,7 +756,7 @@ class PlayScreen(Screen):
         
     def update(self, input_state):
         global game
-        game.update()
+        game.update(input_state)
 
         if game.player.lives < 0:
             game.play_sound("over")
@@ -791,9 +774,9 @@ class GameOverScreen(Screen):
     
     def update(self, input_state):
         global game
-        game.update()
+        game.update(input_state)  # Pass input_state to game.update
         
-        if input_state['space_pressed']:
+        if input_state.fire_pressed:  # Use fire_pressed instead of ['space_pressed']
             menu_screen = MenuScreen(self.app)
             self.app.change_screen(menu_screen)
     
@@ -803,21 +786,43 @@ class GameOverScreen(Screen):
         draw_status()
         screen.blit("over", (0, 0))
 
+class InputState:
+    def __init__(self):
+        self.left = False
+        self.right = False
+        self.jump_pressed = False
+        self.fire_pressed = False
+        self.fire_held = False
+
+        self._prev_space = False
+        self._prev_up = False
+    
+    def get_keyboard(self):
+        space = keyboard.space
+        up = keyboard.up
+        
+        self.fire_pressed = space and not self._prev_space
+        self.jump_pressed = up and not self._prev_up
+        
+        self.left = keyboard.left
+        self.right = keyboard.right
+        self.fire_held = space
+        
+        self._prev_space = space
+        self._prev_up = up
+        
+        return self
+
+# Create one instance and reuse it
+input_state = InputState()
+
 def update():
-    # Collect input state once per frame
-    input_state = {
-        'space_pressed': keyboard.space,
-        'left': keyboard.left,
-        'right': keyboard.right,
-        'up': keyboard.up,
-        'space': keyboard.space
-    }
+    input_state.get_keyboard()  # Update the existing instance
     app.update(input_state)
 
 def draw():
     app.draw()
 
-# Initialize the app with menu screen
 app = App()
 menu_screen = MenuScreen(app)
 app.change_screen(menu_screen)
