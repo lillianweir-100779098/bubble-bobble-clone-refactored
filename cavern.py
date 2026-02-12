@@ -136,6 +136,8 @@ class Orb(CollideActor):
         return collided
 
     def update(self):
+        global game
+
         self.timer += 1
 
         if self.floating:
@@ -705,62 +707,6 @@ def space_pressed():
         space_down = False
         return False
 
-# Pygame Zero calls the update and draw functions each frame
-
-class State(Enum):
-    MENU = 1
-    PLAY = 2
-    GAME_OVER = 3
-
-
-def update():
-    global state, game
-
-    if state == State.MENU:
-        if space_pressed():
-            # Switch to play state, and create a new Game object, passing it a new Player object to use
-            state = State.PLAY
-            game = Game(Player())
-        else:
-            game.update()
-
-    elif state == State.PLAY:
-        if game.player.lives < 0:
-            game.play_sound("over")
-            state = State.GAME_OVER
-        else:
-            game.update()
-
-    elif state == State.GAME_OVER:
-        if space_pressed():
-            # Switch to menu state, and create a new game object without a player
-            state = State.MENU
-            game = Game()
-
-def draw():
-    game.draw()
-
-    if state == State.MENU:
-        # Draw title screen
-        screen.blit("title", (0, 0))
-
-        # Draw "Press SPACE" animation, which has 10 frames numbered 0 to 9
-        # The first part gives us a number between 0 and 159, based on the game timer
-        # Dividing by 4 means we go to a new animation frame every 4 frames
-        # We enclose this calculation in the min function, with the other argument being 9, which results in the
-        # animation staying on frame 9 for three quarters of the time. Adding 40 to the game timer is done to alter
-        # which stage the animation is at when the game first starts
-        anim_frame = min(((game.timer + 40) % 160) // 4, 9)
-        screen.blit("space" + str(anim_frame), (130, 280))
-
-    elif state == State.PLAY:
-        draw_status()
-
-    elif state == State.GAME_OVER:
-        draw_status()
-        # Display "Game Over" image
-        screen.blit("over", (0, 0))
-
 # Set up sound system and start music
 try:
     pygame.mixer.quit()
@@ -772,12 +718,108 @@ except:
     # If an error occurs, just ignore it
     pass
 
-
-
-# Set the initial game state
-state = State.MENU
-
 # Create a new Game object, without a Player object
-game = Game()
+game = None
+
+class App:
+    def __init__(self):
+        self.current_screen = None
+    
+    def change_screen(self, new_screen):
+        self.current_screen = new_screen
+    
+    def update(self, input_state):
+        if self.current_screen:
+            self.current_screen.update(input_state)
+
+    def draw(self):
+        if self.current_screen:
+            self.current_screen.draw()
+
+class Screen:
+    def update(self, input_state):
+        pass
+
+    def draw(self):
+        pass
+
+class MenuScreen(Screen):
+    def __init__(self, app):
+        self.app = app
+        global game
+        game = Game()
+
+    def update(self, input_state):
+        global game
+        game.update()
+
+        if input_state['space_pressed']:
+            play_screen = PlayScreen(self.app)
+            self.app.change_screen(play_screen)
+
+    def draw(self):
+        global game
+        game.draw()
+        screen.blit("title", (0, 0))
+
+        anim_frame = min(((game.timer + 40) % 160) // 4, 9)
+        screen.blit("space" + str(anim_frame), (130, 280))
+
+class PlayScreen(Screen):
+    def __init__(self, app):
+        self.app = app
+        global game
+        game = Game(Player())
+        
+    def update(self, input_state):
+        global game
+        game.update()
+
+        if game.player.lives < 0:
+            game.play_sound("over")
+            game_over_screen = GameOverScreen(self.app)
+            self.app.change_screen(game_over_screen)
+
+    def draw(self):
+        global game
+        game.draw()
+        draw_status()
+
+class GameOverScreen(Screen):
+    def __init__(self, app):
+        self.app = app
+    
+    def update(self, input_state):
+        global game
+        game.update()
+        
+        if input_state['space_pressed']:
+            menu_screen = MenuScreen(self.app)
+            self.app.change_screen(menu_screen)
+    
+    def draw(self):
+        global game
+        game.draw()
+        draw_status()
+        screen.blit("over", (0, 0))
+
+def update():
+    # Collect input state once per frame
+    input_state = {
+        'space_pressed': keyboard.space,
+        'left': keyboard.left,
+        'right': keyboard.right,
+        'up': keyboard.up,
+        'space': keyboard.space
+    }
+    app.update(input_state)
+
+def draw():
+    app.draw()
+
+# Initialize the app with menu screen
+app = App()
+menu_screen = MenuScreen(app)
+app.change_screen(menu_screen)
 
 pgzrun.go()
