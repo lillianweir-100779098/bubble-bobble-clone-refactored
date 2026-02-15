@@ -9,7 +9,7 @@ class Player(GravityActor):
         # will set the actual starting position.
         super().__init__((0, 0))
 
-        self.lives = 0
+        self.lives = 2
         self.score = 0
 
     def reset(self):
