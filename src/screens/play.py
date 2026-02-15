@@ -6,7 +6,11 @@ class PlayScreen():
         self.app = app
         
     def update(self, input_state):
-        if utilities.game.player.lives < 0:
+        if input_state.esc_pressed:
+            from src.screens.pause import PauseScreen
+            pause_screen = PauseScreen(self.app)
+            self.app.change_screen(pause_screen)
+        elif utilities.game.player.lives < 0:
             utilities.game.play_sound("over")
             from src.screens.game_over import GameOverScreen
             game_over_screen = GameOverScreen(self.app)
